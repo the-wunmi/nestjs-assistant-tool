@@ -7,8 +7,7 @@ export class AppController {
   constructor(private readonly appService: AppService) {}
 
   @Get()
-  @AssistantTool("this lists an array of numbers")
-  list(): Promise<number[]> {
-    return this.appService.list();
+  getUser() {
+    return this.appService.getUser();
   }
 }

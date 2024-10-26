@@ -1,16 +1,30 @@
 import { Injectable } from "@nestjs/common";
-import { AssistantTool } from "../../../lib";
+import { AssistantTool, AssistantToolParameter } from "../../../lib";
 
 @Injectable()
 export class AppService {
   constructor() {}
 
-  async list(): Promise<number[]> {
-    return [0, 4, 5, 7];
-  }
-
-  @AssistantTool("this is a demo function")
-  async demo(): Promise<string> {
-    return "demo stuff";
+  @AssistantTool({
+    strict: false,
+    description:
+      "returns the user information, including their username, languages they speak, and the registered country.",
+  })
+  async getUser(
+    @AssistantToolParameter({
+      description:
+        "the provided user's username. if you do not have the user's username, you should prompt the user to provide their username",
+    })
+    username?: string
+  ) {
+    if (!username) throw new Error("username is required");
+    const users = [
+      {
+        username: "the-wunmi",
+        languages: ["en", "sw"],
+        country: "NGA",
+      },
+    ];
+    return users.find((user) => user.username === username);
   }
 }

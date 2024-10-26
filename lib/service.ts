@@ -1,19 +1,21 @@
 import { Inject, Injectable, RequestMethod } from "@nestjs/common";
-import { MODULE_OPTIONS_TOKEN } from "./module.definition";
-import { DiscoveryService } from "@nestjs/core";
 import {
-  DataType,
-  DESIGN_TYPE_METADATA,
-  TOOL,
-  TOOL_PARAMETER,
-} from "./constants";
+  AssistantToolModuleOptions,
+  MODULE_OPTIONS_TOKEN,
+} from "./module.definition";
+import { DiscoveryService } from "@nestjs/core";
+import { DataType, DESIGN_TYPE_METADATA, TOOL } from "./constants";
 import {
   METHOD_METADATA,
   PARAMTYPES_METADATA,
   PATH_METADATA,
   ROUTE_ARGS_METADATA,
 } from "@nestjs/common/constants";
-import { FunctionDefinition } from "openai/resources";
+import {
+  ChatCompletionMessageToolCall,
+  ChatCompletionToolMessageParam,
+  FunctionDefinition,
+} from "openai/resources";
 import { RouteParamtypes } from "@nestjs/common/enums/route-paramtypes.enum";
 import { ValidationTypes } from "class-validator";
 import * as _ from "lodash";
@@ -22,6 +24,8 @@ import { InstanceWrapper } from "@nestjs/core/injector/instance-wrapper";
 import { ValidationMetadata } from "class-validator/types/metadata/ValidationMetadata";
 import { IOptions } from "class-validator-jsonschema/build/options";
 import { AssistantToolType } from "./decorators";
+import OpenAI from "openai";
+import { RequestOptions } from "openai/core";
 
 function mapEnumToObject(enumObj: any) {
   return Object.fromEntries(
@@ -53,7 +57,7 @@ export class AssistantToolService {
   private readonly controllers = new Map();
 
   constructor(
-    @Inject(MODULE_OPTIONS_TOKEN) private readonly options: any,
+    @Inject(MODULE_OPTIONS_TOKEN) private options: AssistantToolModuleOptions,
     private readonly discoveryService: DiscoveryService
   ) {
     this.initializeTools();
@@ -125,7 +129,7 @@ export class AssistantToolService {
 
     if (this.controllers.has(tool.function.name))
       throw new Error(`Duplicate tool name ${tool.function.name}`);
-    this.controllers.set(tool.function.name, instance);
+    this.controllers.set(tool.function.name, method);
     this.tools.push(tool);
   }
 
@@ -165,7 +169,7 @@ export class AssistantToolService {
     };
     if (this.services.has(tool.function.name))
       throw new Error(`Duplicate tool name ${tool.function.name}`);
-    this.services.set(tool.function.name, instance);
+    this.services.set(tool.function.name, method);
     this.tools.push(tool);
   }
 
@@ -374,7 +378,7 @@ export class AssistantToolService {
     return this.tools.find((tool) => tool.function.name === name);
   }
 
-  getToolInstance(name: Tool["function"]["name"]) {
+  getToolMethod(name: Tool["function"]["name"]) {
     return this.services.get(name) || this.controllers.get(name);
   }
 
@@ -384,5 +388,69 @@ export class AssistantToolService {
 
   isController(name: Tool["function"]["name"]) {
     return this.controllers.has(name);
+  }
+
+  callToolMethod(call: ChatCompletionMessageToolCall) {
+    const method = this.getToolMethod(
+      call.function.name as Tool["function"]["name"]
+    );
+    const args = JSON.parse(call.function.arguments);
+    const params = Object.keys(args)
+      .sort((a, b) => Number(a) - Number(b))
+      .map((key) => args[key]);
+    return method(...params);
+  }
+
+  async callTool(
+    call: ChatCompletionMessageToolCall
+  ): Promise<ChatCompletionToolMessageParam> {
+    try {
+      const response = await this.callToolMethod(call);
+      return {
+        role: "tool",
+        content:
+          typeof response === "string" ? response : JSON.stringify(response),
+        tool_call_id: call.id,
+      };
+    } catch (error) {
+      return {
+        role: "tool",
+        content: error.message,
+        tool_call_id: call.id,
+      };
+    }
+  }
+
+  async completeChat(
+    createBody: OpenAI.Chat.Completions.ChatCompletionCreateParamsNonStreaming,
+    createOptions?: RequestOptions,
+    iteration = 0
+  ): Promise<OpenAI.Chat.Completions.ChatCompletion> {
+    const tools = createBody.tools || this.getTools();
+    const response = await this.options.openAIClient.chat.completions.create(
+      {
+        ...createBody,
+        tools,
+      },
+      createOptions
+    );
+
+    const calls = response.choices[0].message.tool_calls;
+
+    if (!calls?.length) return response;
+
+    createBody.messages.push({
+      role: "assistant",
+      tool_calls: calls,
+    });
+
+    await Promise.all(
+      calls.map(async (call) => {
+        const message = await this.callTool(call);
+        createBody.messages.push(message);
+      })
+    );
+
+    return this.completeChat(createBody, createOptions, iteration + 1);
   }
 }

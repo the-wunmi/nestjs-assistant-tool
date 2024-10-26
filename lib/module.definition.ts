@@ -1,16 +1,23 @@
 import { ConfigurableModuleBuilder } from "@nestjs/common";
+import OpenAI from "openai";
+
+export interface AssistantToolModuleOptions {
+  isGlobal?: boolean;
+  strict?: boolean;
+  openAIClient?: OpenAI;
+}
 
 export const { ConfigurableModuleClass, MODULE_OPTIONS_TOKEN } =
-  new ConfigurableModuleBuilder<any>()
+  new ConfigurableModuleBuilder<AssistantToolModuleOptions>()
     .setExtras(
       {
         isGlobal: true,
-        strict: true,
       },
-      (definition, extras) => ({
-        ...definition,
-        global: extras.isGlobal,
-        strict: extras.strict,
-      })
+      (definition, extras) => {
+        return {
+          ...definition,
+          global: extras.isGlobal,
+        };
+      }
     )
     .build();

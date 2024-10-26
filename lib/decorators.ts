@@ -1,9 +1,5 @@
-import {
-  createParamDecorator,
-  ExecutionContext,
-  SetMetadata,
-} from "@nestjs/common";
-import { TOOL, TOOL_PARAMETER } from "./constants";
+import { createParamDecorator, SetMetadata } from "@nestjs/common";
+import { TOOL } from "./constants";
 
 export type AssistantToolType =
   | string
