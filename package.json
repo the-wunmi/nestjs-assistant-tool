@@ -1,6 +1,13 @@
 {
   "name": "nestjs-assistant-tool",
-  "version": "0.0.0",
+  "version": "0.0.1",
+  "keywords": [
+    "nestjs",
+    "assistant",
+    "openai",
+    "function calling",
+    "llm"
+  ],
   "license": "MIT",
   "repository": "https://github.com/the-wunmi/nestjs-assistant-tool",
   "main": "./dist/index.js",
